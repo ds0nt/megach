@@ -2,10 +2,9 @@ package megach
 
 import (
 	"context"
-	"fmt"
 )
 
-const buffSize = 8
+const buffSize = 10
 
 type MegaChannel struct {
 	Send    chan interface{}
@@ -23,6 +22,14 @@ func NewMegaChannel() *MegaChannel {
 	}
 }
 
+func (m *MegaChannel) Stats() (_len, _cap int) {
+	for i := 0; i < len(m.buffers); i++ {
+		_len += len(m.buffers[i])
+		_cap += cap(m.buffers[i])
+	}
+	return
+}
+
 func (m *MegaChannel) Run(ctx context.Context) {
 	// recv immediately, or to buffer
 	go func() {
@@ -33,25 +40,33 @@ func (m *MegaChannel) Run(ctx context.Context) {
 				return
 			case x = <-m.Send:
 			}
-			lenBuffs := len(m.buffers)
+			n := len(m.buffers)
 
 			select {
-			case m.buffers[lenBuffs-1] <- x:
-				fmt.Printf("%d -> %d\n", x, lenBuffs-1)
+			case m.buffers[n-1] <- x:
+				// fmt.Printf("appending [%d] <- %d\n", n-1, x)
 			default:
-				m.buffers = append(m.buffers, make(chan interface{}, buffSize))
-				m.buffers[lenBuffs] <- x
-				fmt.Printf("%d -> %d\n", x, lenBuffs)
-				go func(to, from chan interface{}) {
+				m.buffers = append(m.buffers, make(chan interface{}, buffSize<<uint(n)))
+				// fmt.Printf("new buffer [%d]\n", n)
+				m.buffers[n] <- x
+				// fmt.Printf("appending [%d] <- %d\n", n, x)
+				go func(to, from int) {
 					for {
 						select {
 						case <-ctx.Done():
 							return
-						default:
+						case y := <-m.buffers[from]:
+							// fmt.Printf("moving %d := <- [%d]\n", x, from)
+
+							select {
+							case <-ctx.Done():
+								return
+							case m.buffers[to] <- y:
+								// fmt.Printf("moving [%d] <- %d\n", to, x)
+							}
 						}
-						to <- <-from
 					}
-				}(m.buffers[lenBuffs], m.buffers[lenBuffs-1])
+				}(n-1, n)
 			}
 		}
 	}()
@@ -61,7 +76,13 @@ func (m *MegaChannel) Run(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case m.Recv <- <-m.buffers[0]:
+			case x := <-m.buffers[0]:
+				// fmt.Printf("staging %d\n", x)
+				select {
+				case <-ctx.Done():
+				case m.Recv <- x:
+					// fmt.Printf("sending %d\n", x)
+				}
 			}
 		}
 	}()
