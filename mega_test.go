@@ -2,7 +2,6 @@ package megach
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 
@@ -34,7 +33,13 @@ func TestMegaChannel(t *testing.T) {
 }
 
 func TestBitshift(t *testing.T) {
-	fmt.Println(8 << 0)
+	assert.Equal(t, 10<<0, 10)
+	assert.Equal(t, 10<<1, 20)
+	assert.Equal(t, 10<<2, 40)
+	assert.Equal(t, 10<<3, 80)
+	assert.Equal(t, 10<<4, 160)
+	assert.Equal(t, 10<<5, 320)
+	assert.Equal(t, 10<<6, 640)
 }
 
 func BenchmarkMegaChannelSend(b *testing.B) {
